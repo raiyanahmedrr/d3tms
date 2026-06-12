@@ -51,13 +51,21 @@ export default function NgoDashboard() {
       const provider = new ethers.BrowserProvider(window.ethereum);
       const treasuryContract = new ethers.Contract(TREASURY_ADDRESS, TREASURY_ABI, provider);
       const count = await treasuryContract.donationCount();
+      
+      // Load permanently hidden/disbursed IDs for this specific wallet context
+      const spentKey = `d3tms_spent_${walletAddress.toLowerCase()}`;
+      const spentIds: string[] = JSON.parse(localStorage.getItem(spentKey) || '[]');
+      
       const fetched: any[] = [];
 
       for (let i = 0; i < Number(count); i++) {
         const item = await treasuryContract.donations(i);
-        if (item.ngo.toLowerCase() === walletAddress.toLowerCase()) {
+        const donationId = item.id.toString();
+
+        // Lineage Filter: Only show if it matches this NGO AND has NOT been permanently marked as spent
+        if (item.ngo.toLowerCase() === walletAddress.toLowerCase() && !spentIds.includes(donationId)) {
           fetched.push({
-            id: item.id.toString(),
+            id: donationId,
             donor: item.donor,
             amount: ethers.formatEther(item.amount)
           });
@@ -122,8 +130,17 @@ export default function NgoDashboard() {
       setDisburseTx(tx.hash);
       alert("Downstream allocation executed smoothly!");
 
-      // THE FIX: Remove the active donation item from list dynamically
-      if (selectedDonationId) {
+      // THE FIXED LONG-TERM REGISTRY: Save spent ID to localStorage permanently
+      if (selectedDonationId && walletAddress) {
+        const spentKey = `d3tms_spent_${walletAddress.toLowerCase()}`;
+        const spentIds: string[] = JSON.parse(localStorage.getItem(spentKey) || '[]');
+        
+        if (!spentIds.includes(selectedDonationId)) {
+          spentIds.push(selectedDonationId);
+          localStorage.setItem(spentKey, JSON.stringify(spentIds));
+        }
+
+        // Drop from active state viewport instantly
         setOnChainDonations((prev) => prev.filter((item) => item.id !== selectedDonationId));
         setSelectedDonationId(null);
       }
